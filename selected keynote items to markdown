@@ -1,0 +1,100 @@
+--==============================
+-- Send Selected Keynote Presenter Notes to Desktop Markdown File v.1.1.1
+-- Writted By: Bjørn Molstad https://github.com/bonka
+-- Based on 
+-- Send Keynote Text to Desktop Markdown File
+-- Writted By: Richard Dooling https://github.com/RichardDooling/
+-- Based on 
+-- Send Keynote Presenter Notes to Evernote
+-- Version 1.0.1
+-- Written By: Ben Waldie <ben@automatedworkflows.com>
+-- http://www.automatedworkflows.com
+-- Version 1.0.0 - Initial release
+-- Version 1.0.1 - Updated for Keynote 6.2 compatibility
+-- Version 1.1.0 - Implemented Markdown output
+-- Version 1.1.1 - Updated with multiple selections and skipping empty slides
+--==============================
+
+-- Make sure a presentation is opened in Keynote. If not, notify the user and stop.
+tell application "Keynote"
+	if (front document exists) = false then
+		display alert "Unable to proceed." message "Please open a presentation in Keynote."
+		return
+	end if
+	
+	set detailLevel to {"Titles", "Body", "Notes"}
+	set Choices to choose from list detailLevel with title "Level of detail" with prompt "Choose level of detail. Body equals slide text content. Hold ⌘ to select multiple items." OK button name "OK" cancel button name "Cancel" default items {"Notes"} with multiple selections allowed
+	if result is false then return
+	
+	-- Target the front presentation.
+	tell front document
+		-- Get the name of the presentation.
+		set thePresentationName to name
+		set CaseIndex to 0
+		
+		-- Retrieve the titles of all slides.
+		set theTitles to object text of default title item of every slide where skipped is not true
+		
+		-- If specified, retrieve the body text of all slides
+		if Choices contains "Body" then set theBodyText to object text of default body item of every slide where skipped is not true
+		
+		-- Retrieve the presenter notes for all slides.
+		if Choices contains "Notes" then set theNotes to presenter notes of every slide where skipped is not true
+	end tell
+end tell
+
+-- Prepare the notes as Markdown.
+set theFormattedNotes to "Keynote Presenter Notes for: " & return & return & "# " & thePresentationName & return & "> PS: Only slides with content present in " & convertListToString(Choices, " & ") & " has been exported." & return & return
+
+repeat with a from 1 to length of theTitles
+	
+	-- Only prints this slide if there is content matching selected detailLevel.
+	if Choices contains "Titles" and item a of theTitles is not "" or Choices contains "Body" and item a of theBodyText is not "" or Choices contains "Notes" and item a of theNotes is not "" then
+		set theFormattedNotes to theFormattedNotes & "## Slide " & a & return & return
+		
+		-- Only prints Titles if selected and present
+		if Choices contains "Titles" and item a of theTitles is not "" then
+			set theFormattedNotes to theFormattedNotes & "### Title: " & item a of theTitles & return & return
+		end if
+		
+		-- Only prints Body if selected and present. Body heading is always printed to separate Body from Notes.
+		if Choices contains "Body" and item a of theBodyText is not "" then
+			set theFormattedNotes to theFormattedNotes & "#### Body " & return & return & item a of theBodyText & return & return
+			
+			--  Only prints Notes heading if selected and present and Body heading already has been printed.
+			if Choices contains "Notes" and item a of theNotes is not "" then
+				set theFormattedNotes to theFormattedNotes & "#### Presenter notes: " & return & return & item a of theNotes & return & return
+			end if
+			
+			-- Prints notes without heading if selection only contain Notes, and/or Body is empty
+		else if Choices contains "Notes" then
+			set theFormattedNotes to theFormattedNotes & item a of theNotes & return & return
+		end if
+	end if
+	
+end repeat
+
+set theFormattedNotes to theFormattedNotes & return
+
+on convertListToString(theList, theDelimiter)
+	set AppleScript's text item delimiters to theDelimiter
+	set theString to theList as string
+	set AppleScript's text item delimiters to ""
+	return theString
+end convertListToString
+
+-- Replace any returns with line breaks.
+set AppleScript's text item delimiters to {return, ASCII character 10}
+set theFormattedNotes to text items of theFormattedNotes
+set AppleScript's text item delimiters to {return, ASCII character 10}
+set theFormattedNotes to theFormattedNotes as string
+set AppleScript's text item delimiters to ""
+
+tell application "TextEdit"
+	activate
+	-- Create Desktop Markdown .md file named after Presentation
+	set theDesktopPath to the path to the desktop folder as text
+	make new document with properties {text:theFormattedNotes}
+	save document 1 in file (theDesktopPath & thePresentationName & ".md")
+	close document 1
+end tell
